@@ -6,6 +6,11 @@ Created on Fri May  3 22:54:46 2019
 @author: eran
 """
 
+''' Before running the script, change the following statement to 1, if to run with plots and some printing'''
+
+run_with_plots=0
+ 
+
 import numpy as np
 import pandas as pd
 import os
@@ -13,14 +18,15 @@ import seaborn as sns
 import matplotlib.pyplot as plt
 
 
-directory_path='Desktop/Galvanize-Resources/innterview_Qs/ThetaRay_takehome'
+directory_path='/Users/eran/Galvanize_more_repositories/LendingClub_Loans'
 
 # 1. Let's read in the data 
 raw=pd.read_csv(os.path.join(directory_path,'LoanStats3c.csv'))
 raw.head(2)
 
-# to plot, turn the following statement to True
-if 1==0: 
+# to plot
+if run_with_plots!=0:
+    
     plt.subplots(figsize=(16,3))
     sns.heatmap(raw.isnull(),cbar=False)
     iii=plt.title('nulls in raw dataset')
@@ -29,7 +35,7 @@ if 1==0:
 After LC online research, and using the dictionary given. the columns (fields) that should stay and ones 
 that should be removed are given in the following summary I created:'''
 
-col_rel=pd.read_csv('/Users/eran/Desktop/Galvanize-Resources/innterview_Qs/ThetaRay_takehome/col_relevant.csv',)
+col_rel=pd.read_csv('/Users/eran/Galvanize_more_repositories/LendingClub_Loans/col_relevant.csv',)
 col_rel=col_rel.iloc[:,0:2]
 col_rel=list(col_rel.iloc[:,0][col_rel['0']==1])
 col_rel ## list of the columns to keep
@@ -171,6 +177,8 @@ raw_lab['mths_since_last_major_derog.eng'].value_counts()
 ## 'earliest_cr_line' should be engineered with 'issue_d' to 
 ## create a new feature - the number of years a borrower has a credit line:
 
+if run_with_plots!=0:
+    plt.subplots(figsize=(6,2))
 monyr=raw_lab['earliest_cr_line'].str.split('-',expand=True)
 monyr=monyr.iloc[:,1].astype(float)
 monyr=monyr.apply(lambda x: (2000+x) if x<15 else (1900+x))
@@ -178,7 +186,11 @@ monyr2=raw_lab['issue_d'].str.split('-',expand=True)
 monyr2=monyr2.iloc[:,1].astype(float)
 monyr2=monyr2.apply(lambda x: (2000+x) if x<15 else (1900+x))
 credyrs=monyr2-monyr   
-raw_lab['credit_yrs']=credyrs
+raw_lab['credit_yrs.eng']=credyrs
+
+if run_with_plots!=0:
+    raw_lab['credit_yrs.eng'].hist(bins=50)
+    print('Borowers years of credit histogram')
 
 
 ''' final steps of cleanning'''
@@ -195,7 +207,9 @@ if 1==1:
     dums=['home_ownership','term','is_inc_v','purpose','mths_since_last_record.eng',
           'mths_since_last_major_derog.eng','mths_since_last_delinq.eng','initial_list_status','next_pymnt_d']
     clean_df=pd.get_dummies(raw_lab,columns=dums,drop_first=False)
+    #clean_df=pd.concat([clean_df, dums], axis=1)
 
+## the following columns are floats without missing data, (whether originally or ammended as such)    
 ## the following columns are floats without missing data, (whether originally or ammended as such)    
 col_float=['loan_amnt', 'funded_amnt', 'funded_amnt_inv','int_rate', 'installment',
          'grade','sub_grade','emp_length','annual_inc','delinq_2yrs','dti',
@@ -203,11 +217,12 @@ col_float=['loan_amnt', 'funded_amnt', 'funded_amnt_inv','int_rate', 'installmen
          'total_acc','out_prncp','out_prncp_inv','total_pymnt','total_pymnt_inv',
          'total_rec_prncp','total_rec_int','total_rec_late_fee','recoveries',
          'collection_recovery_fee','last_pymnt_amnt','collections_12_mths_ex_med']
-    
+
 ## Columns to drop:
 if 1==1:
     col_drop=['id','member_id','emp_title','loan_status','url','desc','pymnt_plan',
-              'title','mths_since_last_major_derog','mths_since_last_record','mths_since_last_delinq']
+              'title','mths_since_last_major_derog','mths_since_last_record','mths_since_last_delinq',
+              'earliest_cr_line','next_pymnt_d_Dec-14','next_pymnt_d_Nov-14']
     clean_df.drop(col_drop, inplace=True, axis=1)
     
 ## confirming the list of cols to keep with 'col_rel'
@@ -225,45 +240,44 @@ print('-------------------------------------------')
 col_drop2=[]
 for col in clean_df:
     if col not in col_rel:
-        col_drop2.append(col)         
+        col_drop2.append(col)               
         
 # cols to finaly drop:
-col_drop3=col_drop2[0:17]+col_drop2[-3:-1] 
+col_drop3=col_drop2[0:17]
+col_drop3_leave_leak=col_drop3.copy()
+col_drop3_leave_leak.remove('out_prncp')
+len(col_drop3_leave_leak)
 
-## Columns to drop:
-if 1==1:
-    clean_df.drop(col_drop3, inplace=True, axis=1)
+## create df with a "leake" column, as a control df:
+
+leaked_df=clean_df.copy()
+leaked_df.drop(col_drop3_leave_leak, inplace=True, axis=1)
+#
+# Columns to drop:
+clean_df.drop(col_drop3, inplace=True, axis=1)
     
-## this our final clean df:
-clean_df.info()
-
-       
+## confirming the difference between leaked and clean df:
+print('confirming the difference between "leaked" and "clean" dfs:')
+print('-------------------------------------------')
+for col in leaked_df.columns:
+    if col not in clean_df.columns:
+        print(col)         
         
+## this our final clean df:
+if 1==1:
+    clean_df.info()
 
-## by looking at clean_df.info() we can see 'object' and 'nulls', we can see the remainning problematic columns
-col_prob=['last_pymnt_d','last_credit_pull_d','earliest_cr_line','issue_d','zip_code','addr_state']
-
-## let's drop them for now just to get an initial df for modeling
-clean_df.drop(col_prob, inplace=True, axis=1)
-
-'''columns unsure how to use (should not stay in dataset as is)
+      
+'''columns that were removed from dataset due to different reasons (target/temporal leak, uninformative, data type etc..:
 ---------------------------------------------------------------
 dates: 'issue_d','earliest_cr_line','last_pymnt_d','next_pymnt_d','last_credit_pull_d'
 location: 'zip_code','addr_state'
 credit specific: 'total_rec_late_fee','recoveries','collection_recovery_fee','last_pymnt_amnt','collections_12_mths_ex_med' '''
 
-col_cred_spec=['total_rec_late_fee','recoveries','collection_recovery_fee',
-               'last_pymnt_amnt','collections_12_mths_ex_med']
-# all of these are in clean_df but would need to attend to 
 
 ''' Now we have the most basic clean df that allows us to get initial modeling '''    
 
     
-
-''' #################################
-    draft, don't run from this point 
-    #################################'''
-
 
 '''MODELING '''   
 
@@ -285,8 +299,212 @@ from sklearn.metrics import roc_auc_score
 from sklearn.metrics import precision_recall_curve
 from sklearn.metrics import auc
 
+'''import data-balancing package'''
+from imblearn.over_sampling import SMOTE
 
+
+'''Preparing train and test for "deafault" and "fully paid" classes'''
+
+## data set of only classes 0 and 1:
+def split_01(df):
+    ds_01=df[df['Loan_response']!=2]
+    ## clean_df[clean_df['Loan_response']==1].shape = (1838, 63)
+    print(ds_01.shape)
+    return(ds_01)
+## data set of classes 2:
+def split_2(df):
+    ds_2=df[df['Loan_response']==2]
+    ## clean_df[clean_df['Loan_response']==1].shape = (1838, 63)
+    print(ds_2.shape)
+    return(ds_2)
     
+ds01f=split_01(leaked_df)
+ds01v=split_01(clean_df)
+# saving the valid "current" data set:
+ds2v=split_2(clean_df)
+#ds01eng=split_01(eng_df)
 
 
-  
+
+''' baseline modeling'''
+
+
+def run_model(df,balance=False):
+    # remember to input ds01v for valid dataset or ds01f for leaked dataset:
+    ds01=df
+    # splitiing train, test
+    X01_train, X01_test, y01_train, y01_test = train_test_split(ds01.drop('Loan_response',1),
+                                                                ds01['Loan_response'], test_size=0.30, random_state=42) 
+    column_names=X01_train.columns
+    
+    if balance==True:    
+        smt=SMOTE(random_state=42)
+        X01_train,y01_train=smt.fit_sample(X01_train,y01_train)
+        print('balancing...:')
+        
+    
+    print('shapes of train and test:') 
+    print(X01_train.shape, X01_test.shape, y01_train.shape, y01_test.shape)
+    print('---------------') 
+    
+    '''Instantiate a basic model (without tunning parameters)'''
+    
+    int_params={'n_estimators':500,'min_samples_split':3,'max_features':20,'max_depth':5}
+    
+    rf_int=RandomForestClassifier(random_state=42,n_estimators=int_params['n_estimators'],
+                                 min_samples_split=int_params['min_samples_split'],
+                                 max_features=int_params['max_features'],
+                                 max_depth=int_params['max_depth'])
+    
+    rf_int.fit(X01_train,y01_train)
+    predy=rf_int.predict(X01_test)
+    predprob=rf_int.predict_proba(X01_test)
+    cm=confusion_matrix(predy,y01_test)
+    # fpr, tpr, thresholds = roc_curve(ytest, predprob[:,1])
+    # precision, recall, threshol=precision_recall_curve(ytest, predprob[:,1])
+    
+    '''results for dataset'''
+    
+    print('confusion matrix:')
+    print(cm)
+    #print(classification_report(y01_test,predy))
+    
+    most=rf_int.feature_importances_[rf_int.feature_importances_>0.02]
+    collnum=np.where(rf_int.feature_importances_>0.02)
+    colll=column_names[collnum]  
+    plt.subplots(figsize=(8,3))
+    plt.barh(colll,most)
+    j=plt.title('Features Importance')
+
+
+print('results for clean basic dataset:')
+run_model(ds01v)
+
+print('results for target-leaked dataset:')
+run_model(ds01f)
+
+print('results for clean basic and BALANCED dataset:')
+run_model(ds01v,balance=True)
+
+
+'''FEATURE ENGINEERING'''
+
+#creating a new df for the final engineered dataset
+eng_df=clean_df.copy()
+
+# relative frequency function,to plot differences between 2 classes
+def rel_freq(df,feat):
+    efes=df[feat][df['Loan_response']==0]
+    ehad=df[feat][df['Loan_response']==1]
+    count0, division0 = np.histogram(efes)
+    count1, division1 = np.histogram(ehad,bins=division0)
+    prob0=count0/sum(count0)
+    prob1=count1/sum(count1)
+    plt.subplots(figsize=(6,2))
+    plt.plot(division0[0:10],prob0,label="Fully Paid")
+    plt.legend(loc='best')
+    plt.plot(division0[0:10],prob1,label="Default")
+    plt.legend(loc='best')
+    plt.title('Relative frequency of'+' "'+feat+'" '+'of borrowers')
+
+'''FEATURE 1'''
+'''---------'''
+
+'''mths_since_last_major_derog'''
+
+print('printing a summary of information on the feature:')
+coll='mths_since_last_major_derog'
+print('"mths_since_last_major_derog"')
+print('-----------------------')
+for ii in [0,1,2]:
+    raw_lab[coll][raw_lab['Loan_response']==ii].value_counts()
+    tt=sum(raw_lab[coll][raw_lab['Loan_response']==ii]>0)
+    mm=len(raw_lab[coll][raw_lab['Loan_response']==ii])
+    print('class:',ii)
+    print('e.g.:',raw_lab[coll][raw_lab['Loan_response']==ii].head(1))
+    print('# nulls =',sum(raw_lab[coll][raw_lab['Loan_response']==ii].isnull()))
+    print('# portion of nulls =',sum(raw_lab[coll][raw_lab['Loan_response']==ii].isnull())/len(raw_lab[coll][raw_lab['Loan_response']==ii]))
+    print(raw_lab[coll][raw_lab['Loan_response']==ii].describe()[0:3])
+    print(tt)
+    print(mm)
+    print('class',ii,': portion of values> 0 in the class:',np.round(tt/mm,3))
+    print('-----------------------')
+    
+# seems that class default have more recent major derogetory than class fully paid
+# Current and fully paid are similar 
+efes=raw_lab[coll][raw_lab['Loan_response']==0]
+ehad=raw_lab[coll][raw_lab['Loan_response']==1]
+
+if run_with_plots!=0:  
+    count0, division0 = np.histogram(efes[efes.notnull()])
+    count1, division1 = np.histogram(ehad[ehad.notnull()],bins=division0)
+    prob0=count0/sum(count0)
+    prob1=count1/sum(count1)
+    plt.subplots(figsize=(6,2))
+    plt.plot(division0[0:10],prob0,label="Fully Paid")
+    plt.legend(loc='best')
+    plt.plot(division0[0:10],prob1,label="Default")
+    plt.legend(loc='best')
+    j=plt.title('Relative frequency of "mths_since_last_major_derog" of borrowers')
+
+'''The variable seems relevant up to 60 months mark. it looks like different distributions 
+where the cutoff is till 24 months and 24 to 60 months. these should be 
+the columns: 'rec', 'old','irrelevant'( >60 including NaNs)'''
+
+# engineering feature:
+eng_df['mths_since_last_major_derog.eng']=raw_lab['mths_since_last_major_derog'].apply(lambda x: 'rec' if (x<25) else ('old' if (x>24) & (x<61) else 'NaN'))
+eng_df['mths_since_last_major_derog.eng']=eng_df['mths_since_last_major_derog.eng'].replace(np.nan, 'NaN', regex=True)
+eng_df['mths_since_last_major_derog.eng'].value_counts()
+
+# creating dummie for the feature:
+eng_df=pd.get_dummies(eng_df,columns=['mths_since_last_major_derog.eng'])
+# removing NaN dummie :
+eng_df.drop(['mths_since_last_major_derog.eng_NaN'], inplace=True, axis=1)
+
+
+'''FEATURE 2'''
+'''---------'''
+
+'''Credit_yrs.eng'''
+
+# Credit_yrs is engineered previously from 'issue_d' substracted by 'first_credit_line'
+# By looking at the graphs we can see a slight change, where defaulting 
+# borrowers have slightly less yrs of credit as expected
+
+if run_with_plots!=0:
+    rel_freq(eng_df,'credit_yrs.eng')
+
+# let's take the log of these years, it makes sense because pressumably 
+#the difference between 1 and 5 is much greater thasn 15-20
+eng_df['log_credit_yrs.eng']=np.log10(eng_df['credit_yrs.eng'])
+
+if run_with_plots!=0:
+    rel_freq(eng_df,'log_credit_yrs.eng')
+
+# removing the original column :
+eng_df.drop(['credit_yrs.eng'], inplace=True, axis=1)
+
+
+
+
+''' #################################
+    draft, don't run from this point 
+    #################################'''
+
+
+'''#####################'''
+# to compare dfs: 
+for col in col_prob:
+    if col not in col_drop3:
+        print(col)
+
+
+
+if 1==0:
+    '''##############################################'''
+    '''CURRENT'''
+    
+    ''' Let's prepare the "current" data (subsetting and train and test for later use)'''
+    ## class 2 has ~ 150,000 obj, so let's subset a ~10,000 (i.e. "small") and leave the rest ~140,000 for later:
+    X2_small, X2_big, y2_small, y2_big = train_test_split(ds2v.drop('Loan_response',1),
+                                                            ds2v['Loan_response'], test_size=0.93, random_state=42)
