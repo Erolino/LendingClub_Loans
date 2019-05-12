@@ -264,7 +264,7 @@ for col in leaked_df.columns:
         print(col)         
         
 ## this our final clean df:
-if 1==1:
+if run_with_plots!=0:
     clean_df.info()
 
       
@@ -293,6 +293,7 @@ from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import accuracy_score
 from sklearn.metrics import recall_score
 from sklearn.metrics import precision_score
+from sklearn.metrics import classification_report
 from sklearn.metrics import confusion_matrix
 from sklearn.metrics import roc_curve 
 from sklearn.metrics import roc_auc_score
@@ -309,29 +310,31 @@ from imblearn.over_sampling import SMOTE
 def split_01(df):
     ds_01=df[df['Loan_response']!=2]
     ## clean_df[clean_df['Loan_response']==1].shape = (1838, 63)
-    print(ds_01.shape)
+    print('shape of dataset',ds_01.shape)
     return(ds_01)
 ## data set of classes 2:
 def split_2(df):
     ds_2=df[df['Loan_response']==2]
     ## clean_df[clean_df['Loan_response']==1].shape = (1838, 63)
-    print(ds_2.shape)
+    print('shape of dataset',ds_2.shape)
     return(ds_2)
     
-ds01f=split_01(leaked_df)
-ds01v=split_01(clean_df)
+
 # saving the valid "current" data set:
 ds2v=split_2(clean_df)
-#ds01eng=split_01(eng_df)
-
 
 
 ''' baseline modeling'''
 
 
-def run_model(df,balance=False):
+def run_model(df,balance=False,onetwo=True,show_report=False):
+    
+    # subsetting the dataset for only classes 1 and 2
+    if onetwo==True:
+        ds01=split_01(df)
+        
     # remember to input ds01v for valid dataset or ds01f for leaked dataset:
-    ds01=df
+    #ds01=df
     # splitiing train, test
     X01_train, X01_test, y01_train, y01_test = train_test_split(ds01.drop('Loan_response',1),
                                                                 ds01['Loan_response'], test_size=0.30, random_state=42) 
@@ -375,17 +378,24 @@ def run_model(df,balance=False):
     plt.subplots(figsize=(8,3))
     plt.barh(colll,most)
     j=plt.title('Features Importance')
-
+    classif=classification_report(y01_test,predy)
+    if show_report==True:
+        print(classif)
+        
+        
 
 print('results for clean basic dataset:')
-run_model(ds01v)
+run_model(clean_df)
 
 print('results for target-leaked dataset:')
-run_model(ds01f)
+run_model(leaked_df)
 
 print('results for clean basic and BALANCED dataset:')
-run_model(ds01v,balance=True)
+run_model(clean_df,balance=True,show_report=True)
 
+'''the following run of the engineered dataset was moved to the the end of the script:'''
+# print('results for clean basic and BALANCED dataset:')
+# run_model(eng_df,balance=True,show_report=True)
 
 '''FEATURE ENGINEERING'''
 
@@ -483,6 +493,95 @@ if run_with_plots!=0:
 
 # removing the original column :
 eng_df.drop(['credit_yrs.eng'], inplace=True, axis=1)
+
+'''FEATURE 3'''
+'''---------'''
+
+'''annual_inc'''
+
+## income is highly skewed with several outliers that are skewing the data. 
+## again we'll use log-transformation:
+
+if run_with_plots!=0:
+    plt.subplots(figsize=(16,3))
+    plt.subplot(1,1,1)
+    sns.boxplot('annual_inc','Loan_response',data=clean_df,orient="h")
+    sns.boxplot('annual_inc','Loan_response',data=clean_df,orient="h")
+
+eng_df['annual_inc_log.eng']=np.log10(eng_df['annual_inc'])
+
+## By looking at the graphs we can see a slight shift, where defaulting 
+# borrowers have slightly less income as expected
+if run_with_plots!=0:
+    rel_freq(eng_df,'annual_inc_log.eng')
+
+# removing the original column :
+eng_df.drop(['annual_inc'], inplace=True, axis=1)
+
+
+'''FEATURE 4'''
+'''---------'''
+''' State
+How shall we use location data?
+
+zipcode is probably informative. it has just 3 digits (hence with low resoulution). Ideally
+we should engineer with longitude latitude converter or/and to enrich with census (translate zip 
+to socio-economic level of neighborhood) this we'll leave for following work on project. Perhaps we can use 
+state? it is less informative than zip, but we can quickly use a proxy such as median income per 
+state (in 2014) which is publicly available:
+https://www.reinisfischer.com/median-household-income-us-state-2014'''
+
+state_inc=pd.read_csv('/Users/eran/Galvanize_more_repositories/LendingClub_Loans/state_income.csv',)
+
+## retrieving the state code and the median state income
+sor=state_inc[['Unnamed: 2','Unnamed: 3']]
+## retrieving income and state code features from dataset
+h=raw[['addr_state','annual_inc']]
+dicc= dict(zip(sor['Unnamed: 2'],sor['Unnamed: 3']))
+
+## engineering log ratio of individual income VS state median income:
+eng_df['log_annual_inc_state_med.eng']=h['addr_state']
+eng_df['log_annual_inc_state_med.eng']=eng_df['log_annual_inc_state_med.eng'].replace(dicc)
+eng_df['log_annual_inc_state_med.eng']=np.log10(h['annual_inc']/eng_df['log_annual_inc_state_med.eng'])
+
+# we can see that the feature seems to not differentiate better than regular log income
+if run_with_plots!=0:
+    rel_freq(eng_df,'log_annual_inc_state_med.eng')
+    
+'''FEATURE 5'''
+'''---------'''
+
+'''loan ammount / annual income '''
+## let's maybe use loan ammount devided by the annual income, this ratio 
+## should give us a stronger signal than anyone of the features alone   
+
+eng_df['loan_amnt_to_inc.eng']=clean_df['loan_amnt']/clean_df['annual_inc']
+
+if run_with_plots!=0:
+    rel_freq(eng_df,'loan_amnt_to_inc.eng')
+
+## let's keep the indipendant loan ammount feature as it might be informative by itself
+
+'''FEATURE 6'''
+'''---------'''  
+
+''' Principal '''  
+## we have data on the installment which includes the int_rate too. this means that the risk projected
+## by lending club is already projected in the instalment. to create an additional  indipendant feature  
+## we can use the principal which we don't have (the ammount indipendantly of the interest)
+## but we can easily calculate it and add it
+eng_df['prncp.eng']=eng_df['installment']-(eng_df['installment']*eng_df['int_rate']/100)
+
+if run_with_plots!=0:
+    rel_freq(eng_df,'prncp.eng')
+
+## seems that there is again slight difference in the principal
+
+'''results for model ran on engineered data:
+    ---------------------------------------- '''
+
+print('results for ENGINEERED and BALANCED dataset:')
+run_model(eng_df,balance=True,show_report=True)
 
 
 
