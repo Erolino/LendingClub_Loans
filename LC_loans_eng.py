@@ -6,7 +6,7 @@ Created on Fri May  3 22:54:46 2019
 @author: eran
 """
 
-''' Before running the script, change the following statement to 1, if to run with plots and some printing'''
+''' Before running the script, change the following statement to 1, if to run with plots (and some additional printing)'''
 
 run_with_plots=0
  
@@ -327,7 +327,7 @@ ds2v=split_2(clean_df)
 ''' baseline modeling'''
 
 
-def run_model(df,balance=False,onetwo=True,show_report=False):
+def run_model(df,balance=False,onetwo=True,modell='rf',show_report=False):
     
     # subsetting the dataset for only classes 1 and 2
     if onetwo==True:
@@ -352,16 +352,26 @@ def run_model(df,balance=False,onetwo=True,show_report=False):
     
     '''Instantiate a basic model (without tunning parameters)'''
     
+    # int_params={'n_estimators':500,'min_samples_split':3,'max_features':20,'max_depth':5}
     int_params={'n_estimators':500,'min_samples_split':3,'max_features':20,'max_depth':5}
+    
     
     rf_int=RandomForestClassifier(random_state=42,n_estimators=int_params['n_estimators'],
                                  min_samples_split=int_params['min_samples_split'],
                                  max_features=int_params['max_features'],
                                  max_depth=int_params['max_depth'])
+    logreg=LogisticRegression()
     
-    rf_int.fit(X01_train,y01_train)
-    predy=rf_int.predict(X01_test)
-    predprob=rf_int.predict_proba(X01_test)
+    if modell=='rf':
+        rf_int.fit(X01_train,y01_train)
+        predy=rf_int.predict(X01_test)
+        predprob=rf_int.predict_proba(X01_test)
+    elif modell=='log':
+        logreg.fit(X01_train,y01_train)
+        predy=logreg.predict(X01_test)
+        predprob=logreg.predict_proba(X01_test)
+
+        
     cm=confusion_matrix(predy,y01_test)
     # fpr, tpr, thresholds = roc_curve(ytest, predprob[:,1])
     # precision, recall, threshol=precision_recall_curve(ytest, predprob[:,1])
@@ -372,15 +382,18 @@ def run_model(df,balance=False,onetwo=True,show_report=False):
     print(cm)
     #print(classification_report(y01_test,predy))
     
-    most=rf_int.feature_importances_[rf_int.feature_importances_>0.02]
-    collnum=np.where(rf_int.feature_importances_>0.02)
-    colll=column_names[collnum]  
-    plt.subplots(figsize=(8,3))
-    plt.barh(colll,most)
-    j=plt.title('Features Importance')
+    if modell=='rf':
+        most=rf_int.feature_importances_[rf_int.feature_importances_>0.005]
+        collnum=np.where(rf_int.feature_importances_>0.005)
+        colll=column_names[collnum]  
+        plt.subplots(figsize=(8,3))
+        plt.barh(colll,most)
+        j=plt.title('Features Importance')
     classif=classification_report(y01_test,predy)
     if show_report==True:
         print(classif)
+    
+    print(roc_auc_score(y01_test,predy))
         
         
 
@@ -392,6 +405,9 @@ run_model(leaked_df)
 
 print('results for clean basic and BALANCED dataset:')
 run_model(clean_df,balance=True,show_report=True)
+
+
+
 
 '''the following run of the engineered dataset was moved to the the end of the script:'''
 # print('results for clean basic and BALANCED dataset:')
@@ -559,6 +575,7 @@ eng_df['loan_amnt_to_inc.eng']=clean_df['loan_amnt']/clean_df['annual_inc']
 
 if run_with_plots!=0:
     rel_freq(eng_df,'loan_amnt_to_inc.eng')
+    print(eng_df['loan_amnt_to_inc.eng'][eng_df['Loan_response']==1].describe())
 
 ## let's keep the indipendant loan ammount feature as it might be informative by itself
 
@@ -583,12 +600,93 @@ if run_with_plots!=0:
 print('results for ENGINEERED and BALANCED dataset:')
 run_model(eng_df,balance=True,show_report=True)
 
-
+''' trying a different classification model for control '''
+print('results for clean basic and BALANCED dataset using LOGISTIC REGRESSION:')
+run_model(eng_df,balance=True,modell='log',show_report=True)
 
 
 ''' #################################
     draft, don't run from this point 
     #################################'''
+
+from sklearn.metrics import make_scorer
+from sklearn.model_selection import GridSearchCV,StratifiedKFold
+
+rfclf=RandomForestClassifier(random_state=42)
+paramgrid={'max_depth':[2,3,5],'max_features':[8,16,20,26],
+           'min_samples_split':[2,3,8],'n_estimators':[200,300,500]}
+scorers={'accuracy_score':make_scorer(accuracy_score),
+         'precision_score':make_scorer(precision_score),
+         'recall_score':make_scorer(recall_score),
+         'aucroc_score':make_scorer(roc_auc_score)}
+
+'''Dicctionary of datasets'''
+datasets={'clean_df':clean_df,'eng_df':eng_df,'leaked_df':leaked_df}
+
+def grid_func(the_score,jj,onetwo=True,balance=True): ## jj is the string name of the dataset
+    
+    # subsetting the dataset for only classes 1 and 2
+    if onetwo==True:
+        ds01=split_01(datasets[jj])
+    #optimize hyper parametrs using grid search according to one of the scores that is input
+    skf=StratifiedKFold(n_splits=5) ## stratifying the crossvalidation and choosing the number of splits=10
+    GS=GridSearchCV(rfclf,param_grid=paramgrid,scoring=scorers,refit=the_score,cv=skf,return_train_score='True',n_jobs=-1)
+    
+    Xtrain,Xtest,ytrain,ytest = train_test_split(ds01.drop('Loan_response',1),
+                                                                ds01['Loan_response'], test_size=0.30, random_state=42) 
+    if balance==True:    
+        smt=SMOTE(random_state=42)
+        Xtrain,ytrain=smt.fit_sample(Xtrain,ytrain)
+    
+    #with parallel_backend('threading'):
+    GS.fit(Xtrain,ytrain)
+    
+    prediction=GS.predict(Xtest)
+    
+    print('best params for {}'.format(the_score))
+    print(GS.best_params_)
+    
+    print('confusion matrix adjusted for max {}'.format(the_score))
+    print(confusion_matrix(prediction,ytest))
+    
+    return(GS)
+    
+'''Running cross validation in a grid search ad hoc function to optimize hyper parameters for best  
+    auc score on crossvThe following takes long time to run, change to True to run'''
+
+if 1==0:
+    GSrfAUC=grid_func('aucroc_score','eng_df') ## 
+
+try:
+    GSrfAUC
+except NameError:
+    var_exists = False
+else:
+    var_exists = True
+
+if var_exists == True:
+    resultAUC=pd.DataFrame(GSrfAUC.cv_results_)
+    ### the best auc score placement in result df:
+    roww1=np.where(resultAUC['mean_test_aucroc_score']==max(resultAUC['mean_test_aucroc_score']))
+    ### give the winning row for highest AUC:
+    winAUCresult=resultAUC.loc[roww1[0],[ 'mean_test_aucroc_score','mean_test_recall_score',
+                               'mean_test_precision_score', 'mean_test_accuracy_score',
+                               'std_test_aucroc_score','std_test_recall_score','param_max_depth', 
+                               'param_max_features', 'param_min_samples_split', 'param_n_estimators']]
+    
+    winAUCresult.reset_index(inplace=True)
+    print('Mean, and std of AUC score achieved for best params: ')
+    print('μ = ',round(winAUCresult['mean_test_aucroc_score'],2))
+    print('σ = ',round(winAUCresult['std_test_aucroc_score'],2))
+    print('Mean, and std of RECALL score achieved for best params: ')
+    print('μ = ',round(winAUCresult['mean_test_recall_score'],2))
+    print('σ = ',round(winAUCresult['std_test_recall_score'],2))
+    print('___________________________________')
+    print('Hyperparameters for best AUC score:')
+    paramm=winAUCresult[['param_max_depth','param_max_features','param_min_samples_split','param_n_estimators']]
+    print(paramm)
+    print('___________________________________')
+
 
 
 '''#####################'''
@@ -607,3 +705,8 @@ if 1==0:
     ## class 2 has ~ 150,000 obj, so let's subset a ~10,000 (i.e. "small") and leave the rest ~140,000 for later:
     X2_small, X2_big, y2_small, y2_big = train_test_split(ds2v.drop('Loan_response',1),
                                                             ds2v['Loan_response'], test_size=0.93, random_state=42)
+
+    
+    p=clean_df.copy()
+    p = p.reindex(['loan_amnt','annual_inc','Loan_response'])
+    iii=sns.lmplot('loan_amnt','annual_inc',data=p,hue='Loan_reponse',markers=['o','+','+'],legend_out=False,fit_reg=False)
