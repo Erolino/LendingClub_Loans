@@ -8,7 +8,7 @@ Created on Fri May  3 22:54:46 2019
 
 ''' Before running the script, change the following statement to 1, if to run with plots (and some additional printing)'''
 
-run_with_plots=0
+run_with_plots=1
  
 
 import numpy as np
@@ -109,7 +109,7 @@ print('# of employment titles:',len(raw_lab['emp_title'].unique()))
 ## employement length feature - turnning into numerical (note >10 is converted to 15)
 emp_num=raw_lab['emp_length'].value_counts().index.sort_values()
 print(emp_num)
-emp_dic={'1 year':1, '10+ years':15, '2 years':2, '3 years':3, '4 years':4, '5 years':5,
+emp_dic={'1 year':1, '10+ years':11, '2 years':2, '3 years':3, '4 years':4, '5 years':5,
        '6 years':6, '7 years':7, '8 years':8, '9 years':9, '< 1 year':0.5, 'n/a':0}
 raw_lab['emp_length']=raw_lab['emp_length'].replace(emp_dic)
 
@@ -345,7 +345,6 @@ def run_model(df,balance=False,onetwo=True,modell='rf',show_report=False):
         X01_train,y01_train=smt.fit_sample(X01_train,y01_train)
         print('balancing...:')
         
-    
     print('shapes of train and test:') 
     print(X01_train.shape, X01_test.shape, y01_train.shape, y01_test.shape)
     print('---------------') 
@@ -353,8 +352,7 @@ def run_model(df,balance=False,onetwo=True,modell='rf',show_report=False):
     '''Instantiate a basic model (without tunning parameters)'''
     
     # int_params={'n_estimators':500,'min_samples_split':3,'max_features':20,'max_depth':5}
-    int_params={'n_estimators':500,'min_samples_split':3,'max_features':20,'max_depth':5}
-    
+    int_params={'n_estimators':300,'min_samples_split':3,'max_features':8,'max_depth':5}
     
     rf_int=RandomForestClassifier(random_state=42,n_estimators=int_params['n_estimators'],
                                  min_samples_split=int_params['min_samples_split'],
@@ -371,7 +369,6 @@ def run_model(df,balance=False,onetwo=True,modell='rf',show_report=False):
         predy=logreg.predict(X01_test)
         predprob=logreg.predict_proba(X01_test)
 
-        
     cm=confusion_matrix(predy,y01_test)
     # fpr, tpr, thresholds = roc_curve(ytest, predprob[:,1])
     # precision, recall, threshol=precision_recall_curve(ytest, predprob[:,1])
@@ -382,11 +379,15 @@ def run_model(df,balance=False,onetwo=True,modell='rf',show_report=False):
     print(cm)
     #print(classification_report(y01_test,predy))
     
+    colll=[]
     if modell=='rf':
-        most=rf_int.feature_importances_[rf_int.feature_importances_>0.005]
-        collnum=np.where(rf_int.feature_importances_>0.005)
+        #cond=(rf_int.feature_importances_>0.002)&(rf_int.feature_importances_<0.04)
+        #cond=(rf_int.feature_importances_>0.045)
+        cond=(rf_int.feature_importances_>0.002)
+        most=rf_int.feature_importances_[cond]
+        collnum=np.where(cond)
         colll=column_names[collnum]  
-        plt.subplots(figsize=(8,3))
+        plt.subplots(figsize=(5,4))
         plt.barh(colll,most)
         j=plt.title('Features Importance')
     classif=classification_report(y01_test,predy)
@@ -394,6 +395,7 @@ def run_model(df,balance=False,onetwo=True,modell='rf',show_report=False):
         print(classif)
     
     print(roc_auc_score(y01_test,predy))
+    return(colll)
         
         
 
@@ -596,18 +598,20 @@ if run_with_plots!=0:
 
 '''results for model ran on engineered data:
     ---------------------------------------- '''
+if run_with_plots!=0:
+    print('results for ENGINEERED and BALANCED dataset:')
+    run_model(eng_df,balance=True,show_report=True)
 
-print('results for ENGINEERED and BALANCED dataset:')
-run_model(eng_df,balance=True,show_report=True)
 
 ''' trying a different classification model for control '''
-print('results for clean basic and BALANCED dataset using LOGISTIC REGRESSION:')
-run_model(eng_df,balance=True,modell='log',show_report=True)
+if run_with_plots!=0:
+    print('results for clean basic and BALANCED dataset using LOGISTIC REGRESSION:')
+    run_model(eng_df,balance=True,modell='log',show_report=True)
 
 
-''' #################################
-    draft, don't run from this point 
-    #################################'''
+'''#############################
+CRoss validation and gridsearch
+################################'''
 
 from sklearn.metrics import make_scorer
 from sklearn.model_selection import GridSearchCV,StratifiedKFold
@@ -619,6 +623,8 @@ scorers={'accuracy_score':make_scorer(accuracy_score),
          'precision_score':make_scorer(precision_score),
          'recall_score':make_scorer(recall_score),
          'aucroc_score':make_scorer(roc_auc_score)}
+paramwin={'max_depth':[5],'max_features':[8],
+           'min_samples_split':[3],'n_estimators':[300]}
 
 '''Dicctionary of datasets'''
 datasets={'clean_df':clean_df,'eng_df':eng_df,'leaked_df':leaked_df}
@@ -643,19 +649,22 @@ def grid_func(the_score,jj,onetwo=True,balance=True): ## jj is the string name o
     
     prediction=GS.predict(Xtest)
     
+    pred_proba=GS.predict_proba(Xtest)
+    
     print('best params for {}'.format(the_score))
     print(GS.best_params_)
     
     print('confusion matrix adjusted for max {}'.format(the_score))
     print(confusion_matrix(prediction,ytest))
     
-    return(GS)
+    return(GS,pred_proba)
     
 '''Running cross validation in a grid search ad hoc function to optimize hyper parameters for best  
     auc score on crossvThe following takes long time to run, change to True to run'''
 
 if 1==0:
-    GSrfAUC=grid_func('aucroc_score','eng_df') ## 
+    GSrfAUC,predprobas=grid_func('aucroc_score','eng_df') ## 
+    GSrfAUCclean=grid_func('aucroc_score','clean_df')
 
 try:
     GSrfAUC
@@ -688,25 +697,102 @@ if var_exists == True:
     print('___________________________________')
 
 
+# getting xtrain out of "run_model"
+    
+ds01=split_01(eng_df)
+Xtrain,Xtest,ytrain,ytest = train_test_split(ds01.drop('Loan_response',1),
+                                                                ds01['Loan_response'], test_size=0.30, random_state=42) 
+smt=SMOTE(random_state=42)
+Xtrain,ytrain=smt.fit_sample(Xtrain,ytrain)
+
+''' plotting roc '''
+
+if var_exists == True:
+    fpr, tpr, thresholds = roc_curve(ytest, predprobas[:,1])
+    precision, recall, threshol=precision_recall_curve(ytest, predprobas[:,1])
+
+def plt_curvs(ytest, predprob):
+    ###
+    fpr, tpr, thresholds = roc_curve(ytest, predprob[:,1])
+    precision, recall, threshol=precision_recall_curve(ytest, predprob[:,1])
+    ###
+    print("roc_auc_score: ",round(roc_auc_score(ytest, predprob[:,1]),3))
+    print("precision-recall_auc_score: ",round(auc(recall,precision),3))
+    plt.subplots(figsize=(16,3))
+    plt.subplot(1,3,1)
+    xx=np.linspace(0,1,1000)
+    yy=xx
+    plt.plot(xx,yy,'--')
+    plt.plot(fpr,tpr)
+    plt.xlabel('False Positive Rate')
+    plt.ylabel('True Positive Rate')
+    #
+    plt.subplot(1,3,2)
+    plt.plot([0,1],[0.01,0.01],'--')
+    plt.plot(recall,precision,color='orange')
+    plt.xlabel('recall')
+    j=plt.ylabel('precision')
+    #
+    plt.subplot(1,3,3)
+    plt.plot(threshol,precision[:-1],'gold',label="Precision")
+    plt.plot(threshol,recall[:-1],'purple',label='Recall')
+    plt.xlabel('Thresholds')
+    j=plt.ylabel('Score')
+    plt.legend(loc='best')
+
+if var_exists == True:
+    plt_curvs(ytest, predprobas)
+    
+
+''' correlations plot '''
+
+if run_with_plots!=0:
+    colimp=run_model(eng_df,balance=True,show_report=True)
+    colimp=colimp.tolist()
+    colimp.append('Loan_response')
+    plt.subplots(figsize=(26,12))
+    sns.heatmap(ds01[colimp].corr(),linewidths=.05,annot=True)
+
+
+''' #################################
+    draft, don't run from this point 
+    #################################'''
 
 '''#####################'''
-# to compare dfs: 
-for col in col_prob:
-    if col not in col_drop3:
-        print(col)
 
+if 1==0:
+    ## names of duplicated columns
+    tt= eng_df.loc[:,eng_df.columns.duplicated()]
+    ## where are they?
+    np.where(eng_df.columns=='mths_since_last_major_derog.eng_old')
+    np.where(eng_df.columns=='mths_since_last_major_derog.eng_rec')
+    eng_df.columns
+    
+    locum=['loan_amnt', 'int_rate', 'installment', 'grade', 'sub_grade',
+           'emp_length', 'dti', 'delinq_2yrs', 'inq_last_6mths', 'open_acc',
+           'pub_rec', 'revol_bal', 'revol_util', 'total_acc',
+           'collections_12_mths_ex_med', 'policy_code', 'Loan_response',
+           'home_ownership_MORTGAGE', 'home_ownership_OWN', 'home_ownership_RENT',
+           'term_ 36 months', 'term_ 60 months', 'is_inc_v_Not Verified',
+           'is_inc_v_Source Verified', 'is_inc_v_Verified', 'purpose_car',
+           'purpose_credit_card', 'purpose_debt_consolidation',
+           'purpose_home_improvement', 'purpose_house', 'purpose_major_purchase',
+           'purpose_medical', 'purpose_moving', 'purpose_other',
+           'purpose_renewable_energy', 'purpose_small_business',
+           'purpose_vacation', 'mths_since_last_record.eng_NaN',
+           'mths_since_last_record.eng_old', 'mths_since_last_record.eng_rec',
+           'mths_since_last_major_derog.eng_rec', 'mths_since_last_delinq.eng_NaN',
+           'mths_since_last_delinq.eng_old', 'mths_since_last_delinq.eng_rec',
+           'initial_list_status_f', 'initial_list_status_w',
+           'mths_since_last_major_derog.eng_old','log_credit_yrs.eng',
+           'annual_inc_log.eng', 'log_annual_inc_state_med.eng']
+    
+    eng_df=eng_df[locum]
+    eng_df.columns.duplicated()
 
 
 if 1==0:
-    '''##############################################'''
-    '''CURRENT'''
-    
-    ''' Let's prepare the "current" data (subsetting and train and test for later use)'''
-    ## class 2 has ~ 150,000 obj, so let's subset a ~10,000 (i.e. "small") and leave the rest ~140,000 for later:
-    X2_small, X2_big, y2_small, y2_big = train_test_split(ds2v.drop('Loan_response',1),
-                                                            ds2v['Loan_response'], test_size=0.93, random_state=42)
-
-    
+   
     p=clean_df.copy()
     p = p.reindex(['loan_amnt','annual_inc','Loan_response'])
     iii=sns.lmplot('loan_amnt','annual_inc',data=p,hue='Loan_reponse',markers=['o','+','+'],legend_out=False,fit_reg=False)
