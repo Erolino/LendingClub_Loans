@@ -790,9 +790,3 @@ if 1==0:
     eng_df=eng_df[locum]
     eng_df.columns.duplicated()
 
-
-if 1==0:
-   
-    p=clean_df.copy()
-    p = p.reindex(['loan_amnt','annual_inc','Loan_response'])
-    iii=sns.lmplot('loan_amnt','annual_inc',data=p,hue='Loan_reponse',markers=['o','+','+'],legend_out=False,fit_reg=False)
