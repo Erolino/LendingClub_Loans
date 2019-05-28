@@ -1,5 +1,5 @@
-![Demo](https://user-images.githubusercontent.com/24357654/54296502-7491e580-458b-11e9-94ee-a3c3d7dce802.png)
-![Demo](https://user-images.githubusercontent.com/24357654/54295477-765aa980-4589-11e9-97db-203b5a049596.png)
+![Demo](https://user-images.githubusercontent.com/24357654/58446506-f4314a00-80ce-11e9-8f22-dafcc1dc9ee1.png)
+![Demo](https://user-images.githubusercontent.com/24357654/58446571-29d63300-80cf-11e9-87da-da18895f2c65.png)
 <p align="center">Resource: https://www.kaggle.com/c/predict-west-nile-virus</p>
 
 ### <p align="center">Executive Summary in ['WNV_Detection_Biz_Deck.pdf'](https://github.com/Erolino/WestNileVirus_Detection/blob/master/WNV_Detection_Biz_Deck.pdf)</p>
